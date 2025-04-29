@@ -2,10 +2,10 @@ from playwright.async_api import async_playwright
 from loguru import logger
 
 class SectionURLScraperPlaywright:
-    def __init__(self, base_url, max_retries=5):
+    def __init__(self, base_url, max_retries=10):
         self.base_url = base_url
         self.article_urls = []
-        self.max_retries = max_retries  # Limit retries to avoid infinite loops
+        self.max_retries = max_retries  # Increased retries to handle delayed loading
         logger.add("logs/playwright_section_url_scraper.log", rotation="1 MB", level="INFO")  # Save logs to a file
 
     async def scrape_section(self):
@@ -48,14 +48,28 @@ class SectionURLScraperPlaywright:
                     logger.info("Clicking Next Page button to load more content.")
                     try:
                         await next_button.click(timeout=5000, force=True)  # Use force to bypass pointer interceptions
-                        await page.wait_for_timeout(2000)  # Wait for content to load
+                        await page.wait_for_timeout(2000)  # Wait for initial loading
                     except Exception as e:
                         logger.error(f"Failed to click Next Page button: {e}. Stopping pagination.")
                         break
 
-                    # Scroll the page to load more content
-                    logger.info("Scrolling to load more content.")
-                    await page.evaluate("window.scrollBy(0, window.innerHeight)")
+                    # Simulate user interaction to trigger content loading
+                    logger.info("Simulating user interactions.")
+                    for _ in range(3):
+                        await page.evaluate("window.scrollBy(0, window.innerHeight)")
+                        await page.wait_for_timeout(2000)
+                        await page.evaluate("window.scrollBy(0, -window.innerHeight)")
+                        await page.wait_for_timeout(2000)
+
+                    # Scroll through the entire page
+                    logger.info("Scrolling through the page to load all content.")
+                    for _ in range(5):
+                        await page.evaluate("window.scrollBy(0, 500)")
+                        await page.wait_for_timeout(1000)
+
+                    # Log the page's HTML for debugging
+                    html_content = await page.content()
+                    logger.debug(f"Page HTML after clicking 'Next Page': {html_content}")
 
                     # Check if new content is loaded
                     retries = 0
