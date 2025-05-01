@@ -5,16 +5,27 @@ class SectionURLScraperPlaywright:
     def __init__(self, base_url, max_retries=10):
         self.base_url = base_url
         self.article_urls = []
-        self.max_retries = max_retries  # Increased retries to handle delayed loading
+        self.max_retries = max_retries
         logger.add("logs/playwright_section_url_scraper.log", rotation="1 MB", level="INFO")  # Save logs to a file
 
     async def scrape_section(self):
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)  # Set headless=False to debug in a visible browser
+            # Set headless=False to see the browser window
+            browser = await p.chromium.launch(headless=False)
             page = await browser.new_page()
             await page.goto(self.base_url)
 
             try:
+                # Handle the "I agree" pop-up
+                try:
+                    logger.info("Checking for the 'I agree' pop-up.")
+                    await page.wait_for_selector("button[title='I agree']", timeout=5000)  # Wait for the button to appear
+                    await page.click("button[title='I agree']")  # Click the button
+                    logger.info("Clicked the 'I agree' button.")
+                except Exception as e:
+                    logger.warning(f"'I agree' button not found or could not be clicked: {e}")
+
+                # Start scraping
                 while True:
                     logger.info(f"Scraping page: {page.url}")
 
@@ -47,14 +58,13 @@ class SectionURLScraperPlaywright:
                     # Click the "Next Page" button
                     logger.info("Clicking Next Page button to load more content.")
                     try:
-                        await next_button.click(timeout=5000, force=True)  # Use force to bypass pointer interceptions
+                        await next_button.click(timeout=5000, force=True)
                         await page.wait_for_timeout(2000)  # Wait for initial loading
                     except Exception as e:
                         logger.error(f"Failed to click Next Page button: {e}. Stopping pagination.")
                         break
 
                     # Simulate user interaction to trigger content loading
-                    logger.info("Simulating user interactions.")
                     for _ in range(3):
                         await page.evaluate("window.scrollBy(0, window.innerHeight)")
                         await page.wait_for_timeout(2000)
@@ -62,7 +72,6 @@ class SectionURLScraperPlaywright:
                         await page.wait_for_timeout(2000)
 
                     # Scroll through the entire page
-                    logger.info("Scrolling through the page to load all content.")
                     for _ in range(5):
                         await page.evaluate("window.scrollBy(0, 500)")
                         await page.wait_for_timeout(1000)
@@ -74,10 +83,9 @@ class SectionURLScraperPlaywright:
                     # Check if new content is loaded
                     retries = 0
                     while retries < self.max_retries:
-                        logger.info(f"Waiting for new content to load (Retry {retries + 1}/{self.max_retries}).")
                         await page.wait_for_timeout(5000)  # Increase timeout to wait for content
                         new_cards = await page.query_selector_all("div[data-testid='liverpool-card'] div[data-testid='anchor-inner-wrapper'] a")
-                        if len(new_cards) > len(cards):  # Check if new articles have been added
+                        if len(new_cards) > len(cards):
                             logger.info("New content detected.")
                             break
                         retries += 1
